@@ -4,6 +4,7 @@ import {v2 as cloudinary} from "cloudinary"
 import doctorModel from "../models/doctorModel.js"
 import jwt from 'jsonwebtoken'
 import appointmentModel from "../models/appointmentModel.js"
+import userModel from "../models/userModel.js"
 // Api for the additg the doctor
 
 const addDoctor = async (req,res)=> {
@@ -78,6 +79,10 @@ const loginAdmin = async (req,res) => {
 
   try {
               const {email,password}=req.body
+              // console.log("Received email:", email);
+              // console.log("Received password:", password);
+              // console.log("ENV email:", process.env.ADMIN_EMAIL);
+              // console.log("ENV password:", process.env.ADMIN_PASSWORD);
 
               if (email=== process.env.ADMIN_EMAIL  && password === process.env.ADMIN_PASSWORD){
                       //  const token =jwt.sign(email+password, process.env.JWT_SECRET)
@@ -127,23 +132,16 @@ const appointmentsAdmin = async (req, res) => {
 
 
 
-const cancelAppointment = async (req, res) => {
+const appointmentCancle = async (req, res) => {
   try {
     const { appointmentId} = req.body
 
-    const userId = req.user.userId 
+    // const userId = req.user.userId 
 
     const appointmentData = await appointmentModel.findById(appointmentId)
 
-    // verify appointment user
-    // if (appointmentData.userId !== userId) {
-    //   return res.json({success:false,message:'Unauthorized action'})
-    // }
-
-    if (appointmentData.userId.toString() !== userId.toString()) {
-      return res.json({ success:false, message:'Unauthorized action' })
-    }
     
+
 
     await appointmentModel.findByIdAndUpdate(appointmentId, {cancelled:true})
 
@@ -169,11 +167,36 @@ const cancelAppointment = async (req, res) => {
 
 }
 
+// API to get dashboard data for admin panel
+const adminDashboard = async (req, res) => {
+    try {
+        const doctors = await doctorModel.find({});
+        const users = await userModel.find({});
+        const appointments = await appointmentModel.find({});
+
+        const dashData = {
+            doctors: doctors.length,
+            appointments: appointments.length,
+            patients: users.length,
+            latestAppointments: appointments.reverse().slice(0, 5)
+        };
+
+        res.json({ success: true, dashData });
+    }
+
+   catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+}
+
+}
+
+
 
 
 
  
 
-export{addDoctor,loginAdmin,allDoctors,appointmentsAdmin}
+export{addDoctor,loginAdmin,allDoctors,appointmentsAdmin,appointmentCancle,adminDashboard}
 
 
