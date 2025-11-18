@@ -17,11 +17,9 @@ connectcloudinary()
 
 // middlewares
 app.use(express.json())
-//app.use(cors())
-app.use(cors({
-  origin: "https://doctor-s-appointment-1.vercel.app",
-  credentials: true
-}));
+// app.use(cors())
+app.use(cors({ origin: "*" }));
+
 
 // Stripe webhook endpoint needs raw body
 app.use('/api/user/stripe-webhook', express.raw({ type: 'application/json' }))
