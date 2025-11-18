@@ -19,7 +19,7 @@ connectcloudinary()
 app.use(express.json())
 //app.use(cors())
 app.use(cors({
-  origin: "https://doctor-s-appointment-ashen.vercel.app",
+  origin: "https://doctor-s-appointment-1.vercel.app",
   credentials: true
 }));
 
