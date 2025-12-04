@@ -43,34 +43,65 @@
 //   }
 // };
 
+// // export default authUser;
+// import jwt from "jsonwebtoken";
+
+// // User authentication middleware
+// const authUser = async (req, res, next) => {
+//   try {
+//     // 1. Log headers to debug on Render Dashboard
+//     console.log("Headers received:", req.headers);
+
+//     // 2. Extract token (handle both 'token' and 'Token' cases)
+//     const token = req.headers.token || req.headers.authorization;
+
+//     if (!token) {
+//       console.log("No token found in headers");
+//       return res.json({ success: false, message: "Not authorized, please log in again" });
+//     }
+
+//     // 3. Verify Token
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+//     // 4. Attach to request
+//     // IMPORTANT: Ensure your controllers look for req.body.userId OR req.user.userId
+//     req.body.userId = decoded.id; 
+    
+//     next();
+
+//   } catch (error) {
+//     console.log("Auth Error:", error.message);
+//     res.json({ success: false, message: error.message });
+//   }
+// };
+
 // export default authUser;
+
 import jwt from "jsonwebtoken";
 
-// User authentication middleware
 const authUser = async (req, res, next) => {
   try {
-    // 1. Log headers to debug on Render Dashboard
-    console.log("Headers received:", req.headers);
-
-    // 2. Extract token (handle both 'token' and 'Token' cases)
     const token = req.headers.token || req.headers.authorization;
 
     if (!token) {
-      console.log("No token found in headers");
-      return res.json({ success: false, message: "Not authorized, please log in again" });
+      return res.json({ success: false, message: "Not Authorized login Again" });
     }
 
-    // 3. Verify Token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const token_decode = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 4. Attach to request
-    // IMPORTANT: Ensure your controllers look for req.body.userId OR req.user.userId
-    req.body.userId = decoded.id; 
+    // --- FIX START ---
+    // If req.body is undefined (common in GET requests), create an empty object
+    if (!req.body) {
+       req.body = {} 
+    }
     
+    req.body.userId = token_decode.id;
+    // --- FIX END ---
+
     next();
 
   } catch (error) {
-    console.log("Auth Error:", error.message);
+    console.log(error);
     res.json({ success: false, message: error.message });
   }
 };
