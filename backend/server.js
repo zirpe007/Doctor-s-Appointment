@@ -37,7 +37,6 @@
 // })
 
 // app.listen(port,()=>console.log("Server Started",port))
-
 import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
@@ -53,20 +52,18 @@ const port = process.env.PORT || 4000
 connectDB()
 connectcloudinary()
 
-// --- FIX START: ROBUST CORS ---
-// This allows your frontend to send the 'token' header
-app.use(cors({
-  origin: '*', // ideally replace '*' with your Vercel URL in production
-  methods: ['GET', 'POST', 'DELETE', 'PUT'],
-  allowedHeaders: ['Content-Type', 'token', 'Authorization'] // <--- THIS IS THE FIX
-}));
-// --- FIX END ---
-
 // middlewares
-app.use(express.json())
+app.use(cors({
+  origin: '*', 
+  allowedHeaders: ['Content-Type', 'token', 'Authorization']
+}));
 
-// Stripe webhook endpoint needs raw body
+// --- STRIPE FIX: THIS MUST BE BEFORE express.json() ---
+// Stripe needs the RAW body. If express.json() runs first, it breaks Stripe.
 app.use('/api/user/stripe-webhook', express.raw({ type: 'application/json' }))
+
+// --- JSON PARSER ---
+app.use(express.json()) 
 
 // api endpoints
 app.use('/api/admin', adminRouter)

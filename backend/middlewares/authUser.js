@@ -76,7 +76,6 @@
 // };
 
 // export default authUser;
-
 import jwt from "jsonwebtoken";
 
 const authUser = async (req, res, next) => {
@@ -89,14 +88,15 @@ const authUser = async (req, res, next) => {
 
     const token_decode = jwt.verify(token, process.env.JWT_SECRET);
 
-    // --- FIX START ---
-    // If req.body is undefined (common in GET requests), create an empty object
+    // --- CRITICAL FIX START ---
+    // GET requests do not have a body. req.body is undefined.
+    // We MUST create it before assigning userId.
     if (!req.body) {
        req.body = {} 
     }
     
     req.body.userId = token_decode.id;
-    // --- FIX END ---
+    // --- CRITICAL FIX END ---
 
     next();
 
