@@ -55,7 +55,7 @@ connectcloudinary()
 // middlewares
 app.use(cors({
   origin: '*', 
-  allowedHeaders: ['Content-Type', 'token', 'Authorization']
+  allowedHeaders: ['Content-Type', 'token', 'Authorization','atoken','aToken']
 }));
 
 // --- STRIPE FIX: THIS MUST BE BEFORE express.json() ---
