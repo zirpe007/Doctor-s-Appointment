@@ -68,6 +68,11 @@ const Doctors = () => {
 
                 <p className="text-gray-900 text-lg font-medium">{item.name}</p>
                 <p className="text-gray-600 text-sm">{item.speciality}</p>
+                {item.isVerified && (
+  <p className="text-green-600 text-sm font-medium mt-1">
+    ✅ Verified Doctor
+  </p>
+)}
               </div>
             </div>
           ))}
