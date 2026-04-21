@@ -1,60 +1,74 @@
-import React, { useEffect, useState } from 'react'
-import { useContext } from 'react'
-import { AppContext } from '../context/AppContext'
-import StripePaymentForm from '../components/StripePaymentForm'
-import axios from 'axios'
-import { toast } from 'react-toastify'
+import React, { useEffect, useState, useCallback } from "react";
+import { useContext } from "react";
+import { AppContext } from "../context/AppContext";
+import StripePaymentForm from "../components/StripePaymentForm";
+import axios from "axios";
+import { toast } from "react-toastify";
 
 const MyAppointment = () => {
-  const { backendUrl, token, getDoctorsData } = useContext(AppContext)
-  const [appointments, setAppointments] = useState([])
-  const [payingAppointment, setPayingAppointment] = useState(null)
+  const { backendUrl, token, getDoctorsData } = useContext(AppContext);
+  const [appointments, setAppointments] = useState([]);
+  const [payingAppointment, setPayingAppointment] = useState(null);
 
-  const months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const months = [
+    "",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
 
   const slotDateFormat = (slotDate) => {
-    const dateArray = slotDate.split('_')
-    return dateArray[0] + " " + months[Number(dateArray[1])] + " " + dateArray[2]
-  }
+    const dateArray = slotDate.split("_");
+    return (
+      dateArray[0] + " " + months[Number(dateArray[1])] + " " + dateArray[2]
+    );
+  };
 
-  const getUserAppointments = async () => {
+  const getUserAppointments = useCallback(async () => {
     try {
-      const { data } = await axios.get(backendUrl + '/api/user/appointments', {
-        headers: { token }
-      });     
+      const { data } = await axios.get(backendUrl + "/api/user/appointments", {
+        headers: { token },
+      });
 
       if (data.success) {
         setAppointments(data.appointments.reverse());
         console.log(data.appointments);
       }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+    }
+  }, [backendUrl, token]);
 
+  const cancelAppointment = async (appointmentId) => {
+    try {
+      const { data } = await axios.post(
+        backendUrl + "/api/user/cancel-appointment",
+        { appointmentId },
+        { headers: { token } },
+      );
+
+      if (data.success) {
+        toast.success(data.message);
+        getUserAppointments();
+        getDoctorsData();
+      } else {
+        toast.error(data.message);
+      }
     } catch (error) {
       console.log(error);
       toast.error(error.message);
     }
   };
-
-  const cancelAppointment = async (appointmentId) => {
-    try {
-      const { data } = await axios.post(
-        backendUrl + '/api/user/cancel-appointment',
-        { appointmentId },
-        { headers: { token } }
-      )
-
-      if (data.success) {
-        toast.success(data.message)
-        getUserAppointments()
-        getDoctorsData()
-      } else {
-        toast.error(data.message)
-      }
-
-    } catch (error) {
-      console.log(error);
-      toast.error(error.message);
-    }
-  }
 
   const handlePaymentSuccess = async (paymentIntent) => {
     try {
@@ -63,155 +77,205 @@ const MyAppointment = () => {
         `${backendUrl}/api/user/update-payment-status`,
         {
           appointmentId: payingAppointment._id,
-          paymentIntentId: paymentIntent.id
+          paymentIntentId: paymentIntent.id,
         },
-        { headers: { token } }
-      )
+        { headers: { token } },
+      );
 
       if (data.success) {
-        toast.success('Payment successful! Appointment is now confirmed.')
-        setPayingAppointment(null)
-        getUserAppointments() // Refresh the list to show updated status
+        toast.success("Payment successful! Appointment is now confirmed.");
+        setPayingAppointment(null);
+        getUserAppointments(); // Refresh the list to show updated status
       } else {
-        toast.error('Payment successful but failed to update appointment status')
+        toast.error(
+          "Payment successful but failed to update appointment status",
+        );
       }
     } catch (error) {
-      console.error('Error updating payment status:', error)
-      toast.error('Payment successful but there was an error updating your appointment')
+      console.error("Error updating payment status:", error);
+      toast.error(
+        "Payment successful but there was an error updating your appointment",
+      );
     }
-  }
+  };
 
   const initiatePayment = (appointment) => {
-    setPayingAppointment(appointment)
-  }
+    setPayingAppointment(appointment);
+  };
 
   // Check URL for payment success when component loads
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const sessionId = urlParams.get('session_id')
-    const appointmentId = urlParams.get('appointment_id')
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get("session_id");
+    const appointmentId = urlParams.get("appointment_id");
 
     if (sessionId && appointmentId) {
       // Update payment status in backend
       const updatePaymentStatus = async () => {
         try {
           const { data } = await axios.post(
-            backendUrl + '/api/user/update-payment-status',
+            backendUrl + "/api/user/update-payment-status",
             { appointmentId, paymentIntentId: sessionId },
-            { headers: { token } }
-          )
+            { headers: { token } },
+          );
 
           if (data.success) {
-            toast.success('Payment completed successfully!')
-            getUserAppointments() // Refresh appointments to show updated status
+            toast.success(
+              "Payment completed successfully! Waiting for doctor confirmation.",
+            );
+            getUserAppointments(); // Refresh appointments to show updated status
           } else {
-            toast.error('Payment successful but failed to update appointment status')
+            toast.error(
+              "Payment successful but failed to update appointment status",
+            );
           }
         } catch (error) {
-          console.error('Error updating payment status:', error)
-          toast.error('Payment successful but there was an error updating your appointment')
+          console.error("Error updating payment status:", error);
+          toast.error(
+            "Payment successful but there was an error updating your appointment",
+          );
         }
-      }
+      };
 
-      updatePaymentStatus()
+      updatePaymentStatus();
 
       // Clean URL
-      window.history.replaceState({}, '', window.location.pathname)
+      window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [token, backendUrl])
+  }, [token, backendUrl, getUserAppointments]);
 
   useEffect(() => {
     if (token) {
       getUserAppointments();
     }
-  }, [token]);
+  }, [token, getUserAppointments]);
 
-  const getPaymentStatus = (appointment) => {
-    if (appointment.cancelled) return 'cancelled'
-    if (appointment.payment) return 'paid'
-    return 'pending'
-  }
+  const getAppointmentStatus = (appointment) => {
+    if (appointment.cancelled) return "cancelled";
+    if (appointment.isCompleted) return "confirmed";
+    if (appointment.payment) return "awaiting-confirmation";
+    return "payment-pending";
+  };
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      paid: 'bg-green-100 text-green-800 border-green-200',
-      pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      cancelled: 'bg-red-100 text-red-800 border-red-200'
-    }
-
-    const labels = {
-      paid: 'Paid',
-      pending: 'Payment Pending',
-      cancelled: 'Cancelled'
-    }
+  const getPaymentBadge = (appointment) => {
+    const isPaid = !!appointment.payment;
+    const style = isPaid
+      ? "bg-green-100 text-green-800 border-green-200"
+      : "bg-yellow-100 text-yellow-800 border-yellow-200";
+    const label = isPaid ? "Paid" : "Pending";
 
     return (
-      <span className={`px-2 py-1 rounded-full text-xs border ${styles[status]}`}>
-        {labels[status]}
+      <span className={`px-2 py-1 rounded-full text-xs border ${style}`}>
+        {label}
       </span>
-    )
-  }
+    );
+  };
 
   return (
     <div>
-      <p className='pb-3 mt-12 font-medium text-zinc-700 border-b'>My Appointments</p>
+      <p className="pb-3 mt-12 font-medium text-zinc-700 border-b">
+        My Appointments
+      </p>
       <div>
         {appointments.map((item, index) => {
-          const status = getPaymentStatus(item)
-          
+          const status = getAppointmentStatus(item);
+
           return (
-            <div className='grid grid-cols-[1fr_2fr] gap-4 sm:flex sm:gap-6 py-4 border-b' key={index}>
+            <div
+              className="grid grid-cols-[1fr_2fr] gap-4 sm:flex sm:gap-6 py-4 border-b"
+              key={index}
+            >
               <div>
-                <img className='w-32 h-32 object-cover bg-indigo-50 rounded' src={item.docData.image} alt="" />
+                <img
+                  className="w-32 h-32 object-cover bg-indigo-50 rounded"
+                  src={item.docData.image}
+                  alt=""
+                />
               </div>
-              <div className='flex-1 text-sm text-zinc-600'>
-                <p className='text-neutral-800 font-semibold'>{item.docData.name}</p>
+              <div className="flex-1 text-sm text-zinc-600">
+                <p className="text-neutral-800 font-semibold">
+                  {item.docData.name}
+                </p>
                 <p>{item.docData.speciality}</p>
-                <p className='text-zinc-700 font-medium mt-1'>Address:</p>
-                <p className='text-xs'>{item.docData.address.line1}</p>
-                <p className='text-xs'>{item.docData.address.line2}</p>
-                <p className='text-xs mt-1'>
-                  <span className='text-xs text-neutral-700 font-medium'>Date & Time:</span> 
+                <p className="text-zinc-700 font-medium mt-1">Address:</p>
+                <p className="text-xs">{item.docData.address.line1}</p>
+                <p className="text-xs">{item.docData.address.line2}</p>
+                <p className="text-xs mt-1">
+                  <span className="text-xs text-neutral-700 font-medium">
+                    Date & Time:
+                  </span>
                   {slotDateFormat(item.slotDate)} | {item.slotTime}
                 </p>
-                <div className='mt-2'>
-                  {getStatusBadge(status)}
-                </div>
+                <div className="mt-2">{getPaymentBadge(item)}</div>
               </div>
 
-              <div className='flex flex-col gap-2 justify-end'>
-                {status === 'pending' && (
+              <div className="flex flex-col gap-2 justify-end">
+                {status === "payment-pending" && (
                   <button
                     onClick={() => initiatePayment(item)}
-                    className='text-xs text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300'
+                    className="text-xs text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300"
                   >
                     Pay Online
                   </button>
                 )}
-                
-                {status === 'pending' && (
-                  <button 
+
+                {status === "payment-pending" && (
+                  <button
                     onClick={() => cancelAppointment(item._id)}
-                    className='text-xs text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-300'
+                    className="text-xs text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-300"
                   >
                     Cancel Appointment
                   </button>
                 )}
-                
-                {status === 'cancelled' && (
-                  <button className='sm:min-w-48 py-2 border border-red-500 rounded text-red-500'>
-                    Appointment Cancelled
+
+                {status === "awaiting-confirmation" && (
+                  <button className="sm:min-w-48 py-2 border border-yellow-500 rounded text-yellow-600">
+                    Waiting for Doctor Confirmation
                   </button>
                 )}
 
-                {status === 'paid' && (
-                  <button className='sm:min-w-48 py-2 border border-green-500 rounded text-green-500'>
-                    Payment Completed
-                  </button>
+                {status === "confirmed" && (
+                  <span className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-green-700 bg-green-100 rounded-full">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    Appointment Confirmed
+                  </span>
+                )}
+
+                {status === "cancelled" && (
+                  <span className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-red-700 bg-red-100 rounded-full">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                    Appointment Cancelled
+                  </span>
                 )}
               </div>
             </div>
-          )
+          );
         })}
       </div>
 
@@ -230,7 +294,7 @@ const MyAppointment = () => {
                 id: payingAppointment._id,
                 doctorId: payingAppointment.docId,
                 slotDate: payingAppointment.slotDate,
-                slotTime: payingAppointment.slotTime
+                slotTime: payingAppointment.slotTime,
               }}
               backendUrl={backendUrl}
               token={token}
@@ -245,7 +309,7 @@ const MyAppointment = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default MyAppointment
+export default MyAppointment;

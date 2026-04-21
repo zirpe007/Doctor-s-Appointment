@@ -928,6 +928,7 @@ import { v2 as cloudinary } from 'cloudinary'
 import doctorModel from '../models/doctorModel.js'
 import appointmentModel from '../models/appointmentModel.js'
 import Stripe from 'stripe'
+import { sendPaymentSuccessEmail } from '../utils/emailService.js'
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -1201,6 +1202,10 @@ const updateAppointmentPayment = async (req, res) => {
       return res.json({ success: false, message: "Unauthorized action" })
     }
 
+    if (appointment.payment) {
+      return res.json({ success: true, message: "Payment already recorded" })
+    }
+
     // Update payment status
     await appointmentModel.findByIdAndUpdate(appointmentId, {
       payment: true,
@@ -1208,9 +1213,30 @@ const updateAppointmentPayment = async (req, res) => {
       status: 'confirmed'
     })
 
-    res.json({ 
-      success: true, 
-      message: "Payment status updated successfully" 
+    const userData = await userModel.findById(userId).select('name email')
+    const doctorData = await doctorModel.findById(appointment.docId).select('name')
+
+    const emailResult = await sendPaymentSuccessEmail({
+      toEmail: userData?.email,
+      userName: userData?.name || appointment?.userData?.name,
+      doctorName: doctorData?.name || appointment?.docData?.name,
+      slotDate: appointment.slotDate,
+      slotTime: appointment.slotTime,
+      amount: appointment.amount,
+      appointmentId,
+    })
+
+    if (emailResult.sent) {
+      return res.json({
+        success: true,
+        message: "Payment status updated successfully and email sent"
+      })
+    }
+
+    return res.json({
+      success: true,
+      message: "Payment status updated successfully, but email could not be sent",
+      emailError: emailResult.message,
     })
 
   } catch (error) {
@@ -1224,89 +1250,92 @@ const updateAppointmentPayment = async (req, res) => {
 // =====================
 const createPaymentIntent = async (req, res) => {
   try {
-    const { amount, currency = 'usd', appointmentDetails } = req.body
-    
-    // FIX: Use req.body.userId
-    const userId = req.body.userId
+    const { amount, currency = 'usd', appointmentDetails, userId } = req.body;
 
-    console.log('Creating checkout session for user:', userId)
-    
-    // Validate required fields
+    console.log('Creating checkout session for user:', userId);
+
+    // ✅ Validation
     if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: "Valid amount is required" })
+      return res.status(400).json({ success: false, message: "Valid amount is required" });
     }
 
     if (!appointmentDetails) {
-      return res.status(400).json({ success: false, message: "Appointment details are required" })
+      return res.status(400).json({ success: false, message: "Appointment details are required" });
     }
 
-    // Validate appointment details structure
-    if (!appointmentDetails.doctorId || !appointmentDetails.slotDate || !appointmentDetails.slotTime) {
+    const { doctorId, slotDate, slotTime } = appointmentDetails;
+
+    if (!doctorId || !slotDate || !slotTime) {
       return res.status(400).json({
         success: false,
-        message: "Appointment details must include doctorId, slotDate, and slotTime"
-      })
+        message: "Appointment details must include doctorId, slotDate, and slotTime",
+      });
     }
 
-    // Convert amount to cents and ensure it's an integer
-    const amountInCents = Math.round(parseFloat(amount) * 100)
-    
-    if (amountInCents < 50) { 
-      return res.status(400).json({ success: false, message: "Amount must be at least $0.50" })
+    // ✅ Convert to cents
+    const amountInCents = Math.round(parseFloat(amount) * 100);
+
+    if (amountInCents < 50) {
+      return res.status(400).json({ success: false, message: "Amount must be at least $0.50" });
     }
 
-    // FIX: Use Vercel URL directly to ensure redirection works
-    // Or use process.env.FRONTEND_URL if it is strictly defined in Render
-    const frontend_url = process.env.FRONTEND_URL || 'https://doctor-s-appointment-client.vercel.app'
+    const frontend_url =
+      process.env.FRONTEND_URL || "https://doctor-s-appointment-client.vercel.app";
 
+    // ✅ Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
+      mode: 'payment',
+
       line_items: [
         {
           price_data: {
             currency: currency.toLowerCase(),
             product_data: {
               name: 'Doctor Appointment',
-              description: `Appointment with Dr. ${appointmentDetails.doctorName || 'Doctor'} on ${appointmentDetails.slotDate} at ${appointmentDetails.slotTime}`,
+              description: `Appointment with Dr. ${
+                appointmentDetails.doctorName || 'Doctor'
+              } on ${slotDate} at ${slotTime}`,
             },
             unit_amount: amountInCents,
           },
           quantity: 1,
         },
       ],
-      mode: 'payment',
-      // FIX: Ensure success_url points to Vercel
+
       success_url: `${frontend_url}/my-appointments?session_id={CHECKOUT_SESSION_ID}&appointment_id=${appointmentDetails.id || ''}`,
       cancel_url: `${frontend_url}/payment-cancelled`,
+
       client_reference_id: userId.toString(),
+
       metadata: {
         userId: userId.toString(),
-        doctorId: appointmentDetails.doctorId.toString(),
-        slotDate: appointmentDetails.slotDate,
-        slotTime: appointmentDetails.slotTime,
+        doctorId: doctorId.toString(),
+        appointmentId: appointmentDetails.id ? appointmentDetails.id.toString() : '',
+        slotDate,
+        slotTime,
         appointmentType: appointmentDetails.type || 'general',
-        ...appointmentDetails
-      }
-      // Removed req.user.email to prevent crash since req.user is undefined
-    })
+      },
+    });
 
-    res.json({ 
-      success: true, 
+    // ✅ Response
+    res.json({
+      success: true,
       sessionId: session.id,
-      url: session.url, 
-      message: "Checkout session created successfully"
-    })
+      url: session.url,
+      message: "Checkout session created successfully",
+    });
 
   } catch (error) {
-    console.error('Stripe Checkout Session Error:', error)
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal server error while creating payment session",
-      error: error.message 
-    })
-  }
-}
+    console.error('Stripe Checkout Session Error:', error);
 
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while creating payment session",
+      error: error.message,
+    });
+  }
+};
 
 // =====================
 // HANDLE STRIPE WEBHOOK
@@ -1329,12 +1358,55 @@ const handleStripeWebhook = async (req, res) => {
     
     try {
       console.log('Payment successful for session:', session.id);
-      
+
       // Extract appointment details from session metadata
-      const { userId, doctorId, slotDate, slotTime } = session.metadata;
-      
-      // Add your logic to update the database here if needed
-      // Currently, your payment verification happens on the frontend redirect via updateAppointmentPayment
+      const { userId, doctorId, slotDate, slotTime, appointmentId } = session.metadata || {};
+
+      let appointment = null
+
+      if (appointmentId) {
+        appointment = await appointmentModel.findById(appointmentId)
+      }
+
+      // Fallback if appointmentId is missing
+      if (!appointment && userId && doctorId && slotDate && slotTime) {
+        appointment = await appointmentModel.findOne({
+          userId,
+          docId: doctorId,
+          slotDate,
+          slotTime,
+        }).sort({ date: -1 })
+      }
+
+      if (!appointment) {
+        console.log('Webhook: appointment not found for payment session', session.id)
+        return res.json({ received: true })
+      }
+
+      if (!appointment.payment) {
+        await appointmentModel.findByIdAndUpdate(appointment._id, {
+          payment: true,
+          paymentIntentId: session.payment_intent || session.id,
+          status: 'confirmed'
+        })
+      }
+
+      const patient = await userModel.findById(appointment.userId).select('name email')
+      const doctor = await doctorModel.findById(appointment.docId).select('name')
+
+      const emailResult = await sendPaymentSuccessEmail({
+        toEmail: patient?.email,
+        userName: patient?.name || appointment?.userData?.name,
+        doctorName: doctor?.name || appointment?.docData?.name,
+        slotDate: appointment.slotDate,
+        slotTime: appointment.slotTime,
+        amount: appointment.amount,
+        appointmentId: appointment._id,
+      })
+
+      if (!emailResult.sent) {
+        console.log('Webhook payment email failed:', emailResult.message)
+      }
       
     } catch (error) {
       console.error('Error updating appointment after payment:', error);
