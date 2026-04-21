@@ -2,6 +2,8 @@ import doctorModel from "../models/doctorModel.js"
 import bcrypt from "bcrypt"
 import jwt  from "jsonwebtoken"
 import appointmentModel from "../models/appointmentModel.js"
+import userModel from "../models/userModel.js"
+import { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail } from "../utils/emailService.js"
 
 
 
@@ -90,11 +92,45 @@ const { docId } = req.user; // ⭐ from token
 
     const appointmentData = await appointmentModel.findById(appointmentId);
 
+    if (!appointmentData) {
+      return res.json({ success: false, message: 'Appointment not found' });
+    }
+
+    if (appointmentData.isCompleted) {
+      return res.json({ success: true, message: 'Appointment already confirmed' });
+    }
+
     // if (appointmentData && appointmentData.docId === docId)
     if (appointmentData && appointmentData.docId.toString() === docId)
       {
       await appointmentModel.findByIdAndUpdate(appointmentId, { isCompleted: true });
-      return res.json({ success: true, message: 'Appointment Completed' });
+
+      // Send confirmation email to user after doctor accepts the appointment.
+      const userData = await userModel.findById(appointmentData.userId).select('name email')
+      const doctorData = await doctorModel.findById(docId).select('name')
+
+      const fallbackUserName = appointmentData?.userData?.name
+      const fallbackEmail = appointmentData?.userData?.email
+      const fallbackDoctorName = appointmentData?.docData?.name
+
+      const emailResult = await sendAppointmentConfirmedEmail({
+        toEmail: userData?.email || fallbackEmail,
+        userName: userData?.name || fallbackUserName,
+        doctorName: doctorData?.name || fallbackDoctorName,
+        slotDate: appointmentData.slotDate,
+        slotTime: appointmentData.slotTime,
+        appointmentId: appointmentData._id,
+      })
+
+      if (emailResult.sent) {
+        return res.json({ success: true, message: 'Appointment confirmed and email sent' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Appointment confirmed, but email could not be sent',
+        emailError: emailResult.message,
+      });
     } else {
       return res.json({ success: false, message: 'Mark Failed' });
     }
@@ -115,11 +151,41 @@ const { docId } = req.user; // ⭐ from token
 
     const appointmentData = await appointmentModel.findById(appointmentId);
 
+    if (!appointmentData) {
+      return res.json({ success: false, message: 'Appointment not found' });
+    }
+
+    if (appointmentData.cancelled) {
+      return res.json({ success: true, message: 'Appointment already cancelled' });
+    }
+
     // if (appointmentData && appointmentData.docId === docId) 
     if (appointmentData && appointmentData.docId.toString() === docId)
       {
       await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
-      return res.json({ success: true, message: 'Appointment cancelled' });
+
+      const userData = await userModel.findById(appointmentData.userId).select('name email')
+      const doctorData = await doctorModel.findById(docId).select('name')
+
+      const emailResult = await sendAppointmentRejectedEmail({
+        toEmail: userData?.email || appointmentData?.userData?.email,
+        userName: userData?.name || appointmentData?.userData?.name,
+        doctorName: doctorData?.name || appointmentData?.docData?.name,
+        slotDate: appointmentData.slotDate,
+        slotTime: appointmentData.slotTime,
+        appointmentId: appointmentData._id,
+        wasPaid: !!appointmentData.payment,
+      })
+
+      if (emailResult.sent) {
+        return res.json({ success: true, message: 'Appointment cancelled and email sent' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Appointment cancelled, but email could not be sent',
+        emailError: emailResult.message,
+      });
     } else {
       return res.json({ success: false, message: ' cancel Failed' });
     }

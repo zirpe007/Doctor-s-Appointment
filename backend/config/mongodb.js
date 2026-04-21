@@ -3,7 +3,13 @@ import mongoose from "mongoose";
 
 const connectDB =async () => {
         mongoose.connection.on('connected',() => console.log("Database Connected") )
-        await mongoose.connect(`${process.env.MONGODB_URI}/prescripto`)
+
+        const mongoUri = process.env.MONGODB_URI
+        if (!mongoUri) {
+                throw new Error('MONGODB_URI is missing in environment variables')
+        }
+
+        await mongoose.connect(mongoUri)
 }
 
 export default connectDB
